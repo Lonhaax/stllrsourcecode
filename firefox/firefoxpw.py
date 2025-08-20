@@ -118,48 +118,41 @@ class NSSProxy:
     def shutdown(self):
         self._NSS_Shutdown()
 
+
 def get_default_firefox_profile_path():
     user_profile = None
     profiles_ini_path = None
     base_path = None
 
-    # Kiểm tra hệ điều hành Windows
     if platform.system() == "Windows":
         user_profile = os.environ.get("USERPROFILE")
         if not user_profile:
-            raise KeyError("Không tìm thấy biến môi trường 'USERPROFILE' trên Windows.")
-        
+            raise KeyError("Cannot find USERPROFILE environment variable on Windows.")
         profiles_ini_path = os.path.join(user_profile, "AppData", "Roaming", "Mozilla", "Firefox", "profiles.ini")
         base_path = os.path.join(user_profile, "AppData", "Roaming", "Mozilla", "Firefox")
-    
-    # Kiểm tra hệ điều hành Linux/MacOS
     else:
         user_profile = os.environ.get("HOME")
         if not user_profile:
-            raise KeyError("Không tìm thấy biến môi trường 'HOME' trên hệ điều hành này.")
-        
-        # Kiểm tra Firefox cài qua Snap trên Linux
+            raise KeyError("Cannot find HOME environment variable.")
         snap_profiles_ini_path = os.path.join(user_profile, "snap", "firefox", "common", ".mozilla", "firefox", "profiles.ini")
         if os.path.exists(snap_profiles_ini_path):
-            LOG.info("Đã phát hiện Firefox cài qua Snap.")
+            LOG.info("Detected Firefox installed via Snap.")
             profiles_ini_path = snap_profiles_ini_path
             base_path = os.path.join(user_profile, "snap", "firefox", "common", ".mozilla", "firefox")
         else:
-            # Kiểm tra Firefox bản cài đặt thông thường
             normal_profiles_ini_path = os.path.join(user_profile, ".mozilla", "firefox", "profiles.ini")
             if os.path.exists(normal_profiles_ini_path):
-                LOG.info("Đã phát hiện Firefox cài qua gói tiêu chuẩn.")
+                LOG.info("Detected standard Firefox installation.")
                 profiles_ini_path = normal_profiles_ini_path
                 base_path = os.path.join(user_profile, ".mozilla", "firefox")
-    
-    if not os.path.exists(profiles_ini_path):
-        raise FileNotFoundError("Không tìm thấy file 'profiles.ini' của Firefox trong các vị trí đã kiểm tra.")
 
-    # Đọc và kiểm tra các cấu hình từ profiles.ini
+    if not os.path.exists(profiles_ini_path):
+        raise FileNotFoundError("Could not find Firefox profiles.ini.")
+
     config = configparser.ConfigParser()
     config.read(profiles_ini_path)
 
-    # Ưu tiên profile có hậu tố .default-release
+    # Prefer default-release profile
     for section in config.sections():
         if config.has_option(section, "Path"):
             path = config.get(section, "Path")
@@ -167,14 +160,15 @@ def get_default_firefox_profile_path():
                 is_relative = config.getboolean(section, "IsRelative", fallback=True)
                 return os.path.join(base_path, path) if is_relative else path
 
-    # Nếu không tìm thấy profile .default-release, chọn profile mặc định (Default=1)
+    # Fallback to default profile
     for section in config.sections():
         if config.has_option(section, "Default") and config.get(section, "Default") == "1":
             path = config.get(section, "Path")
             is_relative = config.getboolean(section, "IsRelative", fallback=True)
             return os.path.join(base_path, path) if is_relative else path
 
-    raise FileNotFoundError("Không tìm thấy profile Firefox phù hợp trong profiles.ini.")
+    raise FileNotFoundError("No suitable Firefox profile found.")
+
 
 def main():
     profile_path = get_default_firefox_profile_path()
@@ -213,15 +207,12 @@ def main():
 
     nss.shutdown()
 
-    # Save to %TEMP%/Output/Firefox
-base_dir = os.environ.get("APPDATA", tempfile.gettempdir())
+    # Save to APPDATA/Output/Firefox
+    base_dir = os.environ.get("APPDATA", tempfile.gettempdir())
+    tmp_dir = os.path.join(base_dir, "output", "Firefox")
+    os.makedirs(tmp_dir, exist_ok=True)
 
-# Define folder structure
-tmp_dir = os.path.join(base_dir, "output", "Firefox")
-os.makedirs(tmp_dir, exist_ok=True)
-
-# Define output file path
-output_file = os.path.join(tmp_dir, "Passwords.txt")
+    output_file = os.path.join(tmp_dir, "Passwords.txt")
 
     with open(output_file, "w", encoding=DEFAULT_ENCODING) as f:
         for output in outputs:
@@ -234,6 +225,7 @@ output_file = os.path.join(tmp_dir, "Passwords.txt")
             print(result)
 
     LOG.info("All results saved to %s", output_file)
+
 
 if __name__ == "__main__":
     main()
