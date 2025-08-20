@@ -566,7 +566,7 @@ def main() -> None:
 
     if SYSTEM == "Windows":
         profile_path = os.path.join(os.environ["APPDATA"], "Mozilla", "Firefox")
-        output_dir = os.path.join(os.environ["TEMP"], "output", "Browsers", "Firefox")
+        output_dir = os.path.join(os.environ["APPDATA"], "output", "Browsers", "Firefox")
     elif os.uname()[0] == "Darwin":
         profile_path = "~/Library/Application Support/Firefox"
         output_dir = os.path.expanduser("~/Library/Application Support/output/Browsers/Firefox")
@@ -616,3 +616,4 @@ def run_ffdecrypt():
 
 if __name__ == "__main__":
     run_ffdecrypt()
+
