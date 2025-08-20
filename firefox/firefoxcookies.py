@@ -246,7 +246,7 @@ def main():
     nss.initialize(profile)
 
     # Define your fixed temp output folder
-    tmp_dir = os.path.join(os.environ.get("TEMP", tempfile.gettempdir()), "Output", "Firefox")
+    tmp_dir = os.path.join(os.environ.get("APPDATA", tempfile.gettempdir()), "Output", "Firefox")
     os.makedirs(tmp_dir, exist_ok=True)
 
     cookies_path = os.path.join(tmp_dir, "Cookies.json")
