@@ -33,7 +33,7 @@ for subdir, dirs, files in os.walk(root_dir):
                 continue
 
             # Prepare Netscape lines
-            lines = ["# Netscape HTTP Cookie File", "# Generated from JSON"]
+            lines = [""]
             for cookie in cookies:
                 domain = cookie.get("host") or cookie.get("domain") or ""
                 flag = "TRUE" if domain.startswith(".") else "FALSE"
@@ -53,3 +53,4 @@ for subdir, dirs, files in os.walk(root_dir):
 
 if not found_any:
     print("No cookies.json files found in any subfolders.")
+
